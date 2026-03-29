@@ -1,6 +1,5 @@
 from datetime import datetime
 import json
-from re import L
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -11,21 +10,23 @@ class BaseResponse(BaseModel):
     message: str
     data: object = None
 
+
 class UserRegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length = 8)
-    full_name: str = Field(min_length = 1, max_length = 100)
+    password: str = Field(min_length=8)
+    full_name: str = Field(min_length=1, max_length=100)
 
     @field_validator("password")
     @classmethod
     def check_strength(cls, value):
-        if not any(c.isupper() for c in value): 
+        if not any(c.isupper() for c in value):
             raise ValueError("Cần ít nhất một chữ cái viết hoa")
         if not any(c.islower() for c in value):
             raise ValueError("Cần ít nhất một chữ cái viết thường")
         if not any(c.isdigit() for c in value):
             raise ValueError("Cần ít nhất một chữ số")
         return value
+
 
 class UserPublicOut(BaseModel):
     id: UUID
@@ -35,29 +36,35 @@ class UserPublicOut(BaseModel):
     created_at: datetime
     model_config = {"from_attributes": True}
 
+
 class UserLoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+
 class TokenOut(BaseModel):
-    access_token: str 
-    refresh_token: str 
-    token_type: str = "bearer" 
-    expires_in: int 
-    user: UserPublicOut
-
-class RefreshTokenRequest(BaseModel): 
-    refresh_token: str 
-
-class AccessTokenOut(BaseModel):
-    access_token: str 
+    access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     expires_in: int
-    
+    user: UserPublicOut
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class AccessTokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
 class UserUpdateRequest(BaseModel):
-    full_name: str | None = Field(default = None, min_length = 1, max_length = 100)
+    full_name: str | None = Field(default=None, min_length=1, max_length=100)
     avatar_url: str | None = None
     preferences_json: dict | None = None
+
 
 class UserProfileOut(BaseModel):
     id: UUID
@@ -66,7 +73,7 @@ class UserProfileOut(BaseModel):
     avatar_url: str | None
     preferences_json: dict | None
     created_at: datetime
-    
+
     model_config = {"from_attributes": True}
 
     @classmethod
@@ -78,10 +85,10 @@ class UserProfileOut(BaseModel):
             except Exception:
                 prefs = None
         return cls(
-            id = user.id,
-            email = user.email,
-            full_name = user.full_name,
-            avatar_url = user.avatar_url,
-            preferences_json = prefs,
-            created_at = user.created_at
+            id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            avatar_url=user.avatar_url,
+            preferences_json=prefs,
+            created_at=user.created_at,
         )
