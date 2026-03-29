@@ -28,6 +28,6 @@ class User(Base):
     trips: Mapped[list[Trip]] = relationship(
         "Trip", back_populates="owner", cascade="all, delete-orphan"
     )
-    chat_history: Mapped[list[ChatHistory]] = relationship(
-        "ChatHistory", back_populates="user", cascade="all, delete-orphan"
-    )
+    # chat_history: Mapped[list[ChatHistory]] = relationship(
+    #     "ChatHistory", back_populates="user", cascade="all, delete-orphan"
+    # )

@@ -18,12 +18,12 @@ class ChatHistory(Base):
         nullable=False,
         index=True,
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    # user_id: Mapped[uuid.UUID] = mapped_column(
+    #     UUID(as_uuid=True),
+    #     ForeignKey("users.id", ondelete="CASCADE"),
+    #     nullable=False,
+    #     index=True,
+    # )
     role: Mapped[str] = mapped_column(String, nullable=False)  # user | assistant
     message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -34,4 +34,4 @@ class ChatHistory(Base):
 
     # Relationships
     trip: Mapped[Trip] = relationship("Trip", back_populates="chat_history")
-    user: Mapped[User] = relationship("User", back_populates="chat_history")
+    # user: Mapped[User] = relationship("User", back_populates="chat_history")

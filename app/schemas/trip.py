@@ -19,6 +19,17 @@ class TripCreateRequest(BaseModel):
         return self
 
 
+class TripUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    destination: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    budget: int | None = Field(default=None, ge=1)
+    preferences: str | None = None
+    status: str | None = Field(default=None, pattern="^(draft|active|completed)$")
+    cover_image_url: str | None = None
+
+
 class TripOut(BaseModel):
     id: UUID
     user_id: UUID
@@ -41,3 +52,35 @@ class TripListOut(BaseModel):
     total: int
     page: int
     limit: int
+
+
+class DayPlanBriefOut(BaseModel):
+    id: UUID
+    day_number: int
+    date: date
+    activities_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class TripDetailOut(TripOut):
+    day_plans: list[DayPlanBriefOut] = []
+
+
+class BudgetCategoryOut(BaseModel):
+    planned: int
+    actual: int
+
+
+class TripSummaryOut(BaseModel):
+    """Response cho GET /trips/{id}/summary."""
+
+    trip_id: UUID
+    total_days: int
+    total_activities: int
+    budget_total: int
+    budget_planned: int
+    budget_actual: int
+    budget_remaining: int
+    budget_used_percent: int
+    by_category: dict[str, BudgetCategoryOut]
