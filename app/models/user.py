@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import DateTime, String, Text
@@ -16,18 +16,18 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     full_name: Mapped[str] = mapped_column(String, nullable=False)
-    avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
-    preferences_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    preferences_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
 
-    trips: Mapped[List["Trip"]] = relationship(
-        "Trip",
-        back_populates="user",
-        cascade="all, delete-orphan",
+    # Relationships
+    trips: Mapped[list[Trip]] = relationship(
+        "Trip", back_populates="owner", cascade="all, delete-orphan"
     )
-
-
-# Đặt import ở cuối để tránh circular import
-# from app.models.trip import Trip
+    chat_history: Mapped[list[ChatHistory]] = relationship(
+        "ChatHistory", back_populates="user", cascade="all, delete-orphan"
+    )

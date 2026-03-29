@@ -1,6 +1,6 @@
-from typing import List
+from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from sqlalchemy import UUID, Date, ForeignKey, Integer, String, Text, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
@@ -13,31 +13,40 @@ class Trip(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     destination: Mapped[str] = mapped_column(String, nullable=False)
-    start_date: Mapped[datetime] = mapped_column(Date, nullable=False)
-    end_date: Mapped[datetime] = mapped_column(Date, nullable=False)
-    budget: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    num_travelers: Mapped[int] = mapped_column(Integer, default=1)
-    preferences: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str | None] = mapped_column(String, nullable=True)
-    cover_image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    budget: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    num_travelers: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    preferences: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="draft", nullable=False)
+    cover_image_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
 
-    user: Mapped["User"] = relationship("User", back_populates="trips")
-
-    day_plans: Mapped[List["DayPlan"]] = relationship(
+    # Relationships
+    owner: Mapped[User] = relationship("User", back_populates="trips")
+    day_plans: Mapped[list[DayPlan]] = relationship(
         "DayPlan",
         back_populates="trip",
         cascade="all, delete-orphan",
         order_by="DayPlan.day_number",
     )
-
-
-# Đặt import ở cuối để tránh circular import
-# from app.models.day_plan import DayPlan
-# from app.models.user import User
+    chat_history: Mapped[list[ChatHistory]] = relationship(
+        "ChatHistory", back_populates="trip", cascade="all, delete-orphan"
+    )
+    ai_suggestions: Mapped[list[AISuggestion]] = relationship(
+        "AISuggestion", back_populates="trip", cascade="all, delete-orphan"
+    )
+    budget_items: Mapped[list[BudgetItem]] = relationship(
+        "BudgetItem", back_populates="trip", cascade="all, delete-orphan"
+    )
