@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -8,7 +9,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 class BaseResponse(BaseModel):
     status_code: int
     message: str
-    data: object = None
+    data: Any = None  # FIX ❌-4: Any thay vì object — rõ ràng hơn, tương thích Pydantic v2
 
 
 class UserRegisterRequest(BaseModel):

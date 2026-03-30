@@ -20,7 +20,8 @@ CREATE TABLE "trips" (
   "preferences" text,
   "status" varchar DEFAULT 'draft',
   "cover_image_url" varchar,
-  "created_at" timestamp DEFAULT (now())
+  "created_at" timestamp DEFAULT (now()),
+  "updated_at" timestamp
 );
 
 CREATE TABLE "day_plans" (
@@ -37,8 +38,8 @@ CREATE TABLE "activities" (
   "title" varchar NOT NULL,
   "description" text,
   "type" varchar,
-  "start_time" time,
-  "end_time" time,
+  "start_time" varchar,
+  "end_time" varchar,
   "estimated_cost" int,
   "order_index" int DEFAULT 0,
   "booking_url" varchar,
@@ -82,14 +83,17 @@ CREATE TABLE "budget_items" (
   "planned_amount" int DEFAULT 0,
   "actual_amount" int DEFAULT 0,
   "date" date,
-  "created_at" timestamp DEFAULT (now())
+  "created_at" timestamp DEFAULT (now()),
+  "updated_at" timestamp
 );
 
 CREATE UNIQUE INDEX ON "day_plans" ("trip_id", "day_number");
 
+CREATE INDEX ON "day_plans" ("date");
+
 CREATE INDEX ON "activities" ("day_plan_id", "order_index");
 
-CREATE INDEX ON "locations" ("google_place_id");
+CREATE UNIQUE INDEX ON "locations" ("google_place_id");
 
 CREATE INDEX ON "locations" ("lat", "lng");
 
@@ -111,6 +115,8 @@ COMMENT ON COLUMN "trips"."preferences" IS 'Mô tả sở thích chuyến đi t�
 
 COMMENT ON COLUMN "trips"."status" IS 'draft | active | completed';
 
+COMMENT ON COLUMN "trips"."updated_at" IS 'Tự động cập nhật qua trigger khi UPDATE';
+
 COMMENT ON TABLE "day_plans" IS 'Kế hoạch theo từng ngày';
 
 COMMENT ON COLUMN "day_plans"."day_number" IS 'Ngày thứ mấy trong chuyến đi (1, 2, 3...)';
@@ -118,6 +124,10 @@ COMMENT ON COLUMN "day_plans"."day_number" IS 'Ngày thứ mấy trong chuyến 
 COMMENT ON TABLE "activities" IS 'Hoạt động trong từng ngày';
 
 COMMENT ON COLUMN "activities"."type" IS 'meal | attraction | hotel | transport | other';
+
+COMMENT ON COLUMN "activities"."start_time" IS 'Format HH:MM, vd: 08:00 — lưu dạng string';
+
+COMMENT ON COLUMN "activities"."end_time" IS 'Format HH:MM, vd: 11:00 — lưu dạng string';
 
 COMMENT ON COLUMN "activities"."estimated_cost" IS 'Chi phí ước tính (VND)';
 
@@ -152,6 +162,8 @@ COMMENT ON COLUMN "budget_items"."label" IS 'Tên khoản chi';
 COMMENT ON COLUMN "budget_items"."planned_amount" IS 'Chi phí dự kiến (VND)';
 
 COMMENT ON COLUMN "budget_items"."actual_amount" IS 'Chi phí thực tế (VND)';
+
+COMMENT ON COLUMN "budget_items"."updated_at" IS 'Tự động cập nhật qua trigger khi UPDATE';
 
 ALTER TABLE "trips" ADD FOREIGN KEY ("user_id") REFERENCES "users" ("id") DEFERRABLE INITIALLY IMMEDIATE;
 

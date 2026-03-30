@@ -32,6 +32,11 @@ class BudgetItem(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     # Relationships
     trip: Mapped[Trip] = relationship("Trip", back_populates="budget_items")

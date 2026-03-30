@@ -1,13 +1,17 @@
 from datetime import datetime, timezone
 import uuid
 from app.db.database import Base
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
 class ChatHistory(Base):
     __tablename__ = "chat_history"
+
+    __table_args__ = (
+        Index("ix_chat_history_trip_created", "trip_id", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -18,12 +22,6 @@ class ChatHistory(Base):
         nullable=False,
         index=True,
     )
-    # user_id: Mapped[uuid.UUID] = mapped_column(
-    #     UUID(as_uuid=True),
-    #     ForeignKey("users.id", ondelete="CASCADE"),
-    #     nullable=False,
-    #     index=True,
-    # )
     role: Mapped[str] = mapped_column(String, nullable=False)  # user | assistant
     message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -34,4 +32,3 @@ class ChatHistory(Base):
 
     # Relationships
     trip: Mapped[Trip] = relationship("Trip", back_populates="chat_history")
-    # user: Mapped[User] = relationship("User", back_populates="chat_history")

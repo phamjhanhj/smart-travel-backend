@@ -32,6 +32,11 @@ class Trip(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     # Relationships
     owner: Mapped[User] = relationship("User", back_populates="trips")

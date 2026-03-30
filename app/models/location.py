@@ -1,6 +1,6 @@
 from typing import Optional
 import uuid
-from sqlalchemy import Float, String, Text
+from sqlalchemy import Float, Index, String, Text
 from app.db.database import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -8,6 +8,10 @@ from sqlalchemy.dialects.postgresql import UUID
 
 class Location(Base):
     __tablename__ = "locations"
+
+    __table_args__ = (
+        Index("ix_locations_lat_lng", "lat", "lng"),  # composite index cho /nearby
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

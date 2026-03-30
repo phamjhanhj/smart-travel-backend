@@ -49,9 +49,9 @@ def list_trips(
     items, total = get_trips_by_user(db, current_user.id, status, page, limit)
     return BaseResponse(
         status_code=200,
-        message="Lấy danh sách chuyến đi thành công",
+        message="OK",
         data=TripListOut(
-            trips=[TripOut.model_validate(item) for item in items],
+            items=[TripOut.model_validate(item) for item in items],
             total=total,
             page=page,
             limit=limit,
@@ -59,7 +59,7 @@ def list_trips(
     )
 
 
-@router.post("")
+@router.post("", status_code=201)  # FIX 💡-3: HTTP status phải là 201 theo spec
 def create(
     payload: TripCreateRequest,
     current_user: User = Depends(get_current_user),

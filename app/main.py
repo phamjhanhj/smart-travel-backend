@@ -1,9 +1,55 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import auth, user, trip
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError  # FIX 💡-4: import DB error
+from app.api.routes import auth, user, trip, day_plan, activity, budget, location, ai_chat
 from app.core.config import settings
 
 app = FastAPI(title="Smart Travel Planner API", version="1.0.0")
+
+
+# ─── Global Exception Handlers ────────────────────────────────────────────────
+# Wrap mọi lỗi theo format { status_code, message, data } như API spec yêu cầu
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status_code": exc.status_code,
+            "message": exc.detail,
+            "data": None,
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status_code": 422,
+            "message": "Validation error",
+            "data": {"detail": exc.errors()},
+        },
+    )
+
+
+# FIX 💡-4: bắt lỗi DB — trả về đúng format thay vì unhandled 500 stack trace
+@app.exception_handler(SQLAlchemyError)
+async def db_exception_handler(request: Request, exc: SQLAlchemyError):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status_code": 500,
+            "message": "Lỗi database, vui lòng thử lại sau",
+            "data": None,
+        },
+    )
+
+
+# ─── CORS ─────────────────────────────────────────────────────────────────────
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,9 +59,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── Routers ──────────────────────────────────────────────────────────────────
+
 app.include_router(auth.router, prefix="/api")
 app.include_router(user.router, prefix="/api")
 app.include_router(trip.router, prefix="/api")
+app.include_router(day_plan.day_router, prefix="/api")
+app.include_router(activity.activity_router, prefix="/api")
+app.include_router(budget.router, prefix="/api")
+app.include_router(location.router, prefix="/api")
+app.include_router(ai_chat.router, prefix="/api")
 
 
 @app.get("/")
