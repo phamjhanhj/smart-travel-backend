@@ -6,7 +6,7 @@ GET    /trips/{trip_id}/chat/history      — Lịch sử hội thoại
 GET    /trips/{trip_id}/suggestions       — Danh sách gợi ý AI
 PATCH  /suggestions/{suggestion_id}/status — Accept / Reject gợi ý
 """
-import asyncio  # FIX 💡-8: timeout support
+import asyncio
 import json
 from datetime import datetime
 from uuid import UUID
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.config import settings
+from app.core.enums import ChatRole, SuggestionStatus, SuggestionType
 from app.crud.ai_chat import (
     create_suggestion,
     get_chat_history,
@@ -29,8 +30,6 @@ from app.crud.ai_chat import (
 from app.crud.day_plan import get_day_plans_by_trip
 from app.crud.trip import get_trip_by_id
 from app.db.database import get_db
-from app.models.activity import Activity
-from app.models.ai_suggestion import AISuggestion
 from app.models.user import User
 from app.schemas.ai_chat import (
     AISuggestionOut,
@@ -42,17 +41,18 @@ from app.schemas.ai_chat import (
 )
 from app.schemas.user import BaseResponse
 from app.services import ai_service
+from app.services.itinerary_service import apply_itinerary
 
 router = APIRouter(tags=["AI Chat"])
 
 
 # ─── Guards & helpers ─────────────────────────────────────────────────────────
 
-def _require_anthropic_key() -> None:
-    if not settings.ANTHROPIC_API_KEY:
+def _require_groq_key() -> None:
+    if not settings.GROQ_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail="Anthropic API key chưa được cấu hình",
+            detail="Groq API key chưa được cấu hình",
         )
 
 
@@ -68,24 +68,23 @@ def _get_trip_or_raise(db: Session, trip_id: UUID, current_user: User):
 def _build_trip_context(db: Session, trip) -> dict:
     """Chuyển đổi Trip ORM object → dict context cho AI system prompt."""
     day_plans = get_day_plans_by_trip(db, trip.id)
-    days = []
-    for dp in day_plans:
-        days.append(
-            {
-                "day_number": dp.day_number,
-                "date": str(dp.date),
-                "activities": [
-                    {
-                        "title": a.title,
-                        "type": a.type,
-                        "start_time": a.start_time,
-                        "end_time": a.end_time,
-                        "estimated_cost": a.estimated_cost,
-                    }
-                    for a in dp.activities
-                ],
-            }
-        )
+    days = [
+        {
+            "day_number": dp.day_number,
+            "date": str(dp.date),
+            "activities": [
+                {
+                    "title": a.title,
+                    "type": a.type,
+                    "start_time": a.start_time,
+                    "end_time": a.end_time,
+                    "estimated_cost": a.estimated_cost,
+                }
+                for a in dp.activities
+            ],
+        }
+        for dp in day_plans
+    ]
     return {
         "destination": trip.destination,
         "start_date": str(trip.start_date),
@@ -97,12 +96,13 @@ def _build_trip_context(db: Session, trip) -> dict:
     }
 
 
-def _parse_suggestion_content(raw: str):
-    """Parse content_json string → Python object để trả ra API."""
+def _parse_suggestion_content(raw: str) -> dict:
+    """Parse content_json string → dict để trả ra API."""
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {"value": parsed}
     except Exception:
-        return raw
+        return {"raw": raw}
 
 
 # ─── POST /trips/{trip_id}/chat ───────────────────────────────────────────────
@@ -118,34 +118,38 @@ async def chat(
     Gửi tin nhắn tới AI. Hỗ trợ stream=true (SSE) và stream=false (JSON).
     AI nhận đầy đủ context: điểm đến, ngân sách, preferences, lịch trình.
     """
-    _require_anthropic_key()
+    _require_groq_key()
     trip = _get_trip_or_raise(db, trip_id, current_user)
 
-    # Build context & system prompt
     context = _build_trip_context(db, trip)
     system_prompt = ai_service.build_system_prompt(context)
-
-    # Lấy lịch sử hội thoại gần nhất
     history = get_recent_history_for_context(db, trip_id)
 
-    # Lưu tin nhắn user
-    save_message(db, trip_id, role="user", message=payload.message)
+    save_message(db, trip_id, role=ChatRole.USER.value, message=payload.message)
 
     # ── Stream mode ──────────────────────────────────────────────────────────
     if payload.stream:
+        def _sse(payload_obj: dict) -> str:
+            return f"data: {json.dumps(payload_obj, ensure_ascii=False)}\n\n"
+
         async def event_generator():
             full_text = ""
             try:
                 async for delta in ai_service.chat_stream(system_prompt, history, payload.message):
                     full_text += delta
-                    yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+                    yield _sse({"status_code": 200, "message": "OK", "data": {"delta": delta}})
             except Exception as exc:
-                yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+                yield _sse({
+                    "status_code": 502,
+                    "message": f"Lỗi AI: {exc}",
+                    "data": {"error": str(exc)},
+                })
                 return
 
-            # Sau khi stream xong: lưu DB + tạo suggestion nếu có
             clean_text = ai_service.strip_suggestion_block(full_text)
-            assistant_msg = save_message(db, trip_id, role="assistant", message=clean_text)
+            assistant_msg = save_message(
+                db, trip_id, role=ChatRole.ASSISTANT.value, message=clean_text
+            )
 
             sug_type, sug_content = ai_service.extract_suggestion(full_text)
             suggestion_id = None
@@ -153,25 +157,24 @@ async def chat(
                 sug = create_suggestion(db, trip_id, sug_type, sug_content)
                 suggestion_id = str(sug.id)
 
-            done_payload = {
-                "done": True,
-                "message_id": str(assistant_msg.id),
-                "suggestion_id": suggestion_id,
-            }
-            yield f"data: {json.dumps(done_payload)}\n\n"
+            yield _sse({
+                "status_code": 200,
+                "message": "OK",
+                "data": {
+                    "done": True,
+                    "message_id": str(assistant_msg.id),
+                    "suggestion_id": suggestion_id,
+                },
+            })
 
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-            },
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     # ── Non-stream mode ───────────────────────────────────────────────────────
     try:
-        # FIX 💡-8: Timeout 60s — tránh Anthropic API treo request vô thời hạn
         full_text = await asyncio.wait_for(
             ai_service.chat(system_prompt, history, payload.message),
             timeout=60.0,
@@ -179,10 +182,12 @@ async def chat(
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="AI response timeout, vui lòng thử lại")
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Lỗi Anthropic API: {exc}")
+        raise HTTPException(status_code=502, detail=f"Lỗi Groq API: {exc}")
 
     clean_text = ai_service.strip_suggestion_block(full_text)
-    assistant_msg = save_message(db, trip_id, role="assistant", message=clean_text)
+    assistant_msg = save_message(
+        db, trip_id, role=ChatRole.ASSISTANT.value, message=clean_text
+    )
 
     sug_type, sug_content = ai_service.extract_suggestion(full_text)
     suggestion_id = None
@@ -195,7 +200,7 @@ async def chat(
         message="OK",
         data=ChatMessageOut(
             message_id=assistant_msg.id,
-            role="assistant",
+            role=ChatRole.ASSISTANT.value,
             message=clean_text,
             suggestion_id=suggestion_id,
             created_at=assistant_msg.created_at,
@@ -209,7 +214,9 @@ async def chat(
 def chat_history(
     trip_id: UUID,
     limit: int = Query(default=50, ge=1, le=200),
-    before: datetime | None = Query(default=None, description="ISO datetime — lấy messages trước mốc này"),
+    before: datetime | None = Query(
+        default=None, description="ISO datetime — lấy messages trước mốc này"
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -236,18 +243,17 @@ def list_suggestions(
     _get_trip_or_raise(db, trip_id, current_user)
     suggestions = get_suggestions(db, trip_id, status=status)
 
-    data = []
-    for s in suggestions:
-        data.append(
-            AISuggestionOut(
-                id=s.id,
-                trip_id=s.trip_id,
-                type=s.type,
-                status=s.status,
-                content_json=_parse_suggestion_content(s.content_json),
-                created_at=s.created_at,
-            )
+    data = [
+        AISuggestionOut(
+            id=s.id,
+            trip_id=s.trip_id,
+            type=s.type,
+            status=s.status,
+            content_json=_parse_suggestion_content(s.content_json),
+            created_at=s.created_at,
         )
+        for s in suggestions
+    ]
     return BaseResponse(status_code=200, message="OK", data=data)
 
 
@@ -264,31 +270,39 @@ def update_status(
     Accept hoặc Reject gợi ý AI.
     Nếu status='accepted' và type='itinerary' → tự động tạo activities vào day_plan.
     """
-    # FIX AI-1: bỏ manual validate — Pydantic Literal["accepted","rejected"] tự xử lý
     suggestion = get_suggestion_by_id(db, suggestion_id)
     if suggestion is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy gợi ý")
 
-    # Verify ownership qua trip
     trip = get_trip_by_id(db, suggestion.trip_id)
     if trip is None or trip.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác gợi ý này")
 
-    if suggestion.status != "pending":
+    if suggestion.status == payload.status:
         raise HTTPException(
             status_code=409,
-            detail=f"Gợi ý đã ở trạng thái '{suggestion.status}', không thể thay đổi",
+            detail=f"Gợi ý đã ở trạng thái '{suggestion.status}'",
+        )
+    if suggestion.status == SuggestionStatus.ACCEPTED.value:
+        raise HTTPException(
+            status_code=409,
+            detail="Gợi ý đã được áp dụng, không thể đổi trạng thái",
         )
 
     activities_created = 0
 
-    # ── Auto-apply itinerary ──────────────────────────────────────────────────
-    if payload.status == "accepted" and suggestion.type == "itinerary":
-        activities_created = _apply_itinerary(db, suggestion, trip)
+    # ── Auto-apply itinerary (delegated to service layer) ─────────────────────
+    if (
+        payload.status == SuggestionStatus.ACCEPTED.value
+        and suggestion.type == SuggestionType.ITINERARY.value
+    ):
+        activities_created, apply_error = apply_itinerary(db, suggestion, trip)
+        if apply_error:
+            raise HTTPException(status_code=400, detail=apply_error)
 
     update_suggestion_status(db, suggestion, payload.status)
 
-    if payload.status == "accepted":
+    if payload.status == SuggestionStatus.ACCEPTED.value:
         msg = "Đã áp dụng gợi ý vào lịch trình" if activities_created else "Đã chấp nhận gợi ý"
     else:
         msg = "Đã bỏ qua gợi ý"
@@ -302,63 +316,3 @@ def update_status(
             activities_created=activities_created,
         ),
     )
-
-
-# ─── Itinerary auto-apply ─────────────────────────────────────────────────────
-
-def _apply_itinerary(db: Session, suggestion: AISuggestion, trip) -> int:
-    """
-    Khi user accept gợi ý 'itinerary':
-    - Đọc content_json.day_number → tìm DayPlan tương ứng
-    - Tạo Activity cho mỗi item trong content_json.activities
-    Returns số activities đã tạo.
-    """
-    try:
-        content = json.loads(suggestion.content_json)
-    except Exception:
-        return 0
-
-    day_number = content.get("day_number")
-    activities_data = content.get("activities", [])
-    if not day_number or not activities_data:
-        return 0
-
-    # Tìm DayPlan theo day_number
-    from app.models.day_plan import DayPlan
-    day_plan = (
-        db.query(DayPlan)
-        .filter(
-            DayPlan.trip_id == trip.id,
-            DayPlan.day_number == day_number,
-        )
-        .first()
-    )
-    if day_plan is None:
-        return 0
-
-    # Lấy order_index tiếp theo
-    last = (
-        db.query(Activity)
-        .filter(Activity.day_plan_id == day_plan.id)
-        .order_by(Activity.order_index.desc())
-        .first()
-    )
-    next_order = (last.order_index + 1) if last else 0
-
-    count = 0
-    for item in activities_data:
-        activity = Activity(
-            day_plan_id=day_plan.id,
-            title=item.get("title", "Hoạt động"),
-            type=item.get("type"),
-            start_time=item.get("start_time"),
-            end_time=item.get("end_time"),
-            estimated_cost=item.get("estimated_cost"),
-            order_index=next_order,
-        )
-        db.add(activity)
-        next_order += 1
-        count += 1
-
-    db.commit()
-    return count

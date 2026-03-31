@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from uuid import UUID
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
+from app.models.activity import Activity
 from app.models.day_plan import DayPlan
 
 
@@ -9,6 +10,9 @@ def get_day_plans_by_trip(db: Session, trip_id: UUID) -> list[DayPlan]:
     return (
         db.query(DayPlan)
         .filter(DayPlan.trip_id == trip_id)
+        .options(
+            selectinload(DayPlan.activities).selectinload(Activity.location),
+        )
         .order_by(DayPlan.day_number)
         .all()
     )

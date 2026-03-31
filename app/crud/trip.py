@@ -1,5 +1,5 @@
 from datetime import timedelta, date
-from http.client import HTTPException
+from fastapi import HTTPException
 from app.models.day_plan import DayPlan
 from app.models.trip import Trip
 from app.schemas.trip import TripCreateRequest, TripUpdateRequest
@@ -101,6 +101,7 @@ def get_trip_summary(db: Session, trip: Trip) -> dict:
     budget_actual = sum(i.actual_amount or 0 for i in budget_items)
     budget_total = trip.budget or 0
     budget_remaining = budget_total - budget_actual
+    overspent = budget_actual > budget_total
     budget_used_percent = (
         round(budget_actual / budget_total * 100) if budget_total > 0 else 0
     )
@@ -122,6 +123,7 @@ def get_trip_summary(db: Session, trip: Trip) -> dict:
         "budget_planned": budget_planned,
         "budget_actual": budget_actual,
         "budget_remaining": budget_remaining,
+        "overspent": overspent,
         "budget_used_percent": budget_used_percent,
         "by_category": by_category,
     }

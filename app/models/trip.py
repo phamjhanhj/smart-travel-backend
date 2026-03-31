@@ -1,13 +1,23 @@
-from typing import List, Optional
+from __future__ import annotations
+
+from typing import Optional
 import uuid
 from datetime import datetime, timezone, date
-from sqlalchemy import UUID, Date, ForeignKey, Integer, String, Text, DateTime
+from sqlalchemy import UUID, CheckConstraint, Date, ForeignKey, Integer, String, Text, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
+from app.core.enums import TripStatus
 
 
 class Trip(Base):
     __tablename__ = "trips"
+
+    __table_args__ = (
+        CheckConstraint(
+            f"status IN ({', '.join(repr(s.value) for s in TripStatus)})",
+            name="ck_trips_status",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -25,7 +35,9 @@ class Trip(Base):
     budget: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     num_travelers: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     preferences: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String, default="draft", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String, default=TripStatus.DRAFT.value, nullable=False, index=True
+    )  # TripStatus enum value
     cover_image_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

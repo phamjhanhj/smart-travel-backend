@@ -11,8 +11,9 @@ from app.crud.day_plan import (
 )
 from app.crud.trip import get_trip_by_id
 from app.db.database import get_db
+from app.models.trip import Trip
 from app.models.user import User
-from app.schemas.activity import ActivityBriefOut, ActivityCreateRequest, ActivityOut
+from app.schemas.activity import ActivityBriefOut, ActivityCreateRequest, ActivityOut  # ActivityOut used via DayPlanWithActivitiesOut.from_day_plan
 from app.schemas.day_plan import (
     DayPlanBriefOut,
     DayPlanOut,
@@ -40,7 +41,8 @@ def _get_day_or_404(db: Session, day_id: UUID, trip_id: UUID):
     if not day:
         raise HTTPException(status_code=404, detail="Không tìm thấy ngày")
     if day.trip_id != trip_id:
-        raise HTTPException(status_code=400, detail="Ngày không thuộc chuyến đi này")
+        # Không leak thông tin cross-trip: coi như không tồn tại
+        raise HTTPException(status_code=404, detail="Không tìm thấy ngày")
     return day
 
 
@@ -57,38 +59,8 @@ def list_days(
     db: Session = Depends(get_db),
 ):
     _get_trip_or_404(db, trip_id, current_user)
-
     day_plans = get_day_plans_by_trip(db, trip_id)
-
-    data = []
-    for dp in day_plans:
-        activities_out = []
-        for act in dp.activities:
-            activities_out.append(
-                ActivityOut(
-                    id=act.id,
-                    day_plan_id=act.day_plan_id,
-                    title=act.title,
-                    description=act.description,
-                    type=act.type,
-                    start_time=act.start_time,
-                    end_time=act.end_time,
-                    estimated_cost=act.estimated_cost,
-                    order_index=act.order_index,
-                    booking_url=act.booking_url,
-                    notes=act.notes,
-                    location=act.location,  # relationship — None nếu không có
-                )
-            )
-        data.append(
-            DayPlanWithActivitiesOut(
-                id=dp.id,
-                day_number=dp.day_number,
-                date=dp.date,
-                activities=activities_out,
-            )
-        )
-
+    data = [DayPlanWithActivitiesOut.from_day_plan(dp) for dp in day_plans]
     return BaseResponse(status_code=200, message="OK", data=data)
 
 
@@ -139,20 +111,7 @@ def add_activity(
     return BaseResponse(
         status_code=201,
         message="Thêm hoạt động thành công",
-        data=ActivityOut(
-            id=activity.id,
-            day_plan_id=activity.day_plan_id,
-            title=activity.title,
-            description=activity.description,
-            type=activity.type,
-            start_time=activity.start_time,
-            end_time=activity.end_time,
-            estimated_cost=activity.estimated_cost,
-            order_index=activity.order_index,
-            booking_url=activity.booking_url,
-            notes=activity.notes,
-            location=activity.location,
-        ),
+        data=ActivityOut.model_validate(activity),
     )
 
 
@@ -167,6 +126,8 @@ def generate_days(
     db: Session = Depends(get_db),
 ):
     trip = _get_trip_or_404(db, trip_id, current_user)
+    # Khóa row trip trong transaction để giảm race-condition khi generate đồng thời.
+    db.query(Trip).filter(Trip.id == trip.id).with_for_update().first()
 
     day_plans = generate_day_plans(
         db,

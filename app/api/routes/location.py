@@ -71,8 +71,8 @@ async def search_locations(
 
 @router.get("/locations/nearby", response_model=BaseResponse)
 async def nearby_locations(
-    lat: float = Query(..., description="Vĩ độ hiện tại"),
-    lng: float = Query(..., description="Kinh độ hiện tại"),
+    lat: float = Query(..., ge=-90, le=90, description="Vĩ độ hiện tại"),
+    lng: float = Query(..., ge=-180, le=180, description="Kinh độ hiện tại"),
     radius: int = Query(default=1000, ge=100, le=50000, description="Bán kính tìm kiếm (mét)"),
     category: str | None = Query(
         default=None,

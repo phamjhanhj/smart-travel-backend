@@ -65,13 +65,17 @@ def reorder_activities(
     day_plan_id: UUID,
     items: list[ReorderItem],
 ) -> None:
-    for item in items:
-        db.query(Activity).filter(
-            Activity.id == item.id,
-            Activity.day_plan_id == day_plan_id,  # bảo vệ: chỉ update đúng ngày
-        ).update({"order_index": item.order_index})
+    try:
+        for item in items:
+            db.query(Activity).filter(
+                Activity.id == item.id,
+                Activity.day_plan_id == day_plan_id,  # bảo vệ: chỉ update đúng ngày
+            ).update({"order_index": item.order_index})
 
-    db.commit()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def get_activity_by_id(db: Session, activity_id: UUID) -> Activity | None:

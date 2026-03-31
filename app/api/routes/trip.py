@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user
 from app.crud.trip import (
@@ -13,7 +13,9 @@ from app.crud.trip import (
     update_trip,
 )
 from app.db.database import get_db
+from app.models.day_plan import DayPlan
 from app.models.user import User
+from app.models.trip import Trip
 from app.schemas.trip import (
     TripCreateRequest,
     TripDetailOut,
@@ -83,24 +85,17 @@ def get_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    trip = get_trip_by_id(db, trip_id)
+    trip = (
+        db.query(Trip)
+        .filter(Trip.id == trip_id)
+        .options(selectinload(Trip.day_plans).selectinload(DayPlan.activities))
+        .first()
+    )
     check_trip_user(trip, current_user)
-
-    # Build day_plans kèm số lượng activities
-    day_plans_out = []
-    for dp in trip.day_plans:
-        day_plans_out.append(
-            DayPlanBriefOut(
-                id=dp.id,
-                day_number=dp.day_number,
-                date=dp.date,
-                activities_count=len(dp.activities),
-            )
-        )
 
     detail = TripDetailOut(
         **TripOut.model_validate(trip).model_dump(),
-        day_plans=day_plans_out,
+        day_plans=[DayPlanBriefOut.from_day_plan(dp) for dp in trip.day_plans],
     )
     return BaseResponse(status_code=200, message="OK", data=detail)
 

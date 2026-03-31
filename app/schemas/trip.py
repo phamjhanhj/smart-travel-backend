@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from pydantic import BaseModel, Field, model_validator
 from uuid import UUID
+from app.core.enums import TripStatus
 # FIX ⚠️-7b: import DayPlanBriefOut từ day_plan.py — single source of truth
 from app.schemas.day_plan import DayPlanBriefOut
 
@@ -29,7 +30,10 @@ class TripUpdateRequest(BaseModel):
     budget: int | None = Field(default=None, ge=0)
     num_travelers: int | None = Field(default=None, ge=1)  # FIX 💡-6: thêm field theo spec
     preferences: str | None = None
-    status: str | None = Field(default=None, pattern="^(draft|active|completed)$")
+    status: str | None = Field(
+        default=None,
+        pattern="^(" + "|".join(s.value for s in TripStatus) + ")$",
+    )
     cover_image_url: str | None = None
 
 
@@ -82,5 +86,6 @@ class TripSummaryOut(BaseModel):
     budget_planned: int
     budget_actual: int
     budget_remaining: int
+    overspent: bool
     budget_used_percent: int
     by_category: dict[str, BudgetCategoryOut]

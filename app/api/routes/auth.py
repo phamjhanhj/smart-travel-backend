@@ -65,6 +65,7 @@ def refresh_token(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
         message="Token đã được làm mới",
         data=AccessTokenOut(
             access_token=create_access_token(str(user.id)),
+            refresh_token=create_refresh_token(str(user.id)),
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         ),
     )

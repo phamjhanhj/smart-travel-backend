@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone, date
 from typing import Optional
 import uuid
@@ -21,7 +23,7 @@ class BudgetItem(Base):
         index=True,
     )
     category: Mapped[str] = mapped_column(
-        String, nullable=False
+        String, nullable=False, index=True
     )  # food | transport | hotel | activity | other
     label: Mapped[str] = mapped_column(String, nullable=False)
     planned_amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

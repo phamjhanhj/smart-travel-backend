@@ -26,12 +26,23 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Pydantic v2: exc.errors() có thể chứa ctx={"error": ValueError(...)}
+    # ValueError không JSON-serializable → phải chuyển sang str trước
+    def _sanitize(errors: list) -> list:
+        sanitized = []
+        for err in errors:
+            e = dict(err)
+            if "ctx" in e and isinstance(e["ctx"].get("error"), Exception):
+                e["ctx"] = {**e["ctx"], "error": str(e["ctx"]["error"])}
+            sanitized.append(e)
+        return sanitized
+
     return JSONResponse(
         status_code=422,
         content={
             "status_code": 422,
             "message": "Validation error",
-            "data": {"detail": exc.errors()},
+            "data": {"detail": _sanitize(exc.errors())},
         },
     )
 
@@ -73,4 +84,9 @@ app.include_router(ai_chat.router, prefix="/api")
 
 @app.get("/")
 def root():
-    return {"message": "Smart Travel Planner API is running"}
+    from app.schemas.user import BaseResponse
+    return BaseResponse(
+        status_code=200,
+        message="Smart Travel Planner API is running",
+        data=None,
+    )

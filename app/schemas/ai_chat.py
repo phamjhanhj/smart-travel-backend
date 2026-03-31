@@ -40,7 +40,7 @@ class AISuggestionOut(BaseModel):
     trip_id: UUID
     type: str
     status: str
-    content_json: Any  # parsed từ JSON string trong DB
+    content_json: dict[str, Any]  # parsed từ JSON string trong DB
     created_at: datetime
 
     model_config = {"from_attributes": True}

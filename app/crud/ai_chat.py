@@ -49,7 +49,7 @@ def get_recent_history_for_context(
     max_turns: int = 10,
 ) -> list[dict]:
     """
-    Lấy N turn gần nhất để truyền vào Anthropic messages[].
+    Lấy N turn gần nhất để truyền vào Groq messages[].
     Trả về list[{"role": ..., "content": ...}].
     """
     rows = (

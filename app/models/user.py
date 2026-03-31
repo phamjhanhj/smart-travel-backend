@@ -1,4 +1,6 @@
-from typing import List, Optional
+from __future__ import annotations
+
+from typing import Optional
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import DateTime, String, Text

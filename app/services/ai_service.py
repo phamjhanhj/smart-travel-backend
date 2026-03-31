@@ -1,35 +1,40 @@
 """
-Anthropic Claude service for AI Chat.
+Groq AI service for AI Chat.
 
 Hỗ trợ:
 - Xây dựng system prompt giàu context (trip + schedule + budget + preferences)
 - Gửi message và nhận response (non-stream)
 - Streaming qua SSE (stream=True)
 - Trích xuất structured suggestion từ response text của AI
+
+Sử dụng Groq API (free tier) với Llama 3.3 70B model.
 """
+
 from __future__ import annotations
 
 import json
 import re
 from typing import AsyncIterator
 
-import anthropic
+from groq import AsyncGroq
 
 from app.core.config import settings
 
 # ─── Model ────────────────────────────────────────────────────────────────────
 
-_MODEL = "claude-3-5-haiku-20241022"  # Nhanh và tiết kiệm, đủ tốt cho travel assistant
+_MODEL = "llama-3.3-70b-versatile"  # Mạnh, nhanh, free trên Groq
 _MAX_TOKENS = 2048
 
 
 # ─── Client factory ───────────────────────────────────────────────────────────
 
-def _client() -> anthropic.AsyncAnthropic:
-    return anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+def _client() -> AsyncGroq:
+    return AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 
 # ─── System prompt ────────────────────────────────────────────────────────────
+
 
 def build_system_prompt(trip_context: dict) -> str:
     """
@@ -61,7 +66,9 @@ def build_system_prompt(trip_context: dict) -> str:
         else:
             schedule_lines.append(f"  Ngày {day_num} ({date_str}): chưa có lịch")
 
-    schedule_str = "\n".join(schedule_lines) if schedule_lines else "  Chưa có lịch trình"
+    schedule_str = (
+        "\n".join(schedule_lines) if schedule_lines else "  Chưa có lịch trình"
+    )
 
     return f"""Bạn là trợ lý du lịch thông minh, chuyên tư vấn lịch trình và địa điểm tại Việt Nam.
 Bạn đang hỗ trợ chuyến đi với thông tin sau:
@@ -99,44 +106,52 @@ HƯỚNG DẪN:
 
 # ─── Chat (non-stream) ────────────────────────────────────────────────────────
 
+
 async def chat(
     system: str,
     history: list[dict],  # [{"role": "user"|"assistant", "content": "..."}]
     user_message: str,
 ) -> str:
     """Gửi message và trả về full response text."""
-    messages = history + [{"role": "user", "content": user_message}]
+    messages = [{"role": "system", "content": system}]
+    messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
 
-    async with _client() as client:
-        response = await client.messages.create(
-            model=_MODEL,
-            max_tokens=_MAX_TOKENS,
-            system=system,
-            messages=messages,
-        )
+    client = _client()
+    response = await client.chat.completions.create(
+        model=_MODEL,
+        max_tokens=_MAX_TOKENS,
+        messages=messages,
+    )
 
-    return response.content[0].text
+    return response.choices[0].message.content
 
 
 # ─── Chat (stream) ────────────────────────────────────────────────────────────
+
 
 async def chat_stream(
     system: str,
     history: list[dict],
     user_message: str,
 ) -> AsyncIterator[str]:
-    """Yield từng delta text từ Anthropic streaming API."""
-    messages = history + [{"role": "user", "content": user_message}]
+    """Yield từng delta text từ Groq streaming API."""
+    messages = [{"role": "system", "content": system}]
+    messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
 
-    async with _client() as client:
-        async with client.messages.stream(
-            model=_MODEL,
-            max_tokens=_MAX_TOKENS,
-            system=system,
-            messages=messages,
-        ) as stream:
-            async for text in stream.text_stream:
-                yield text
+    client = _client()
+    stream = await client.chat.completions.create(
+        model=_MODEL,
+        max_tokens=_MAX_TOKENS,
+        messages=messages,
+        stream=True,
+    )
+
+    async for chunk in stream:
+        delta = chunk.choices[0].delta
+        if delta.content:
+            yield delta.content
 
 
 # ─── Suggestion extractor ─────────────────────────────────────────────────────
